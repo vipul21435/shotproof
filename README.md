@@ -12,7 +12,7 @@ Three commands, one Python package, no service:
 
 `check` is pure Python + Pillow and runs anywhere, CI included. Only `record` is macOS-bound.
 
-Status: `check` is implemented. `encode` and `record` are in progress.
+Status: `check` and `encode` are implemented and tested. `record` is in progress.
 
 ## Install
 
