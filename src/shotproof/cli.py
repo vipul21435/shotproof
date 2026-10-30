@@ -42,19 +42,27 @@ def _limits_from(ns: argparse.Namespace) -> Limits:
 
 
 def cmd_check(ns: argparse.Namespace) -> int:
-    result = check(ns.gif, _limits_from(ns), ns.tolerance, ns.min_fraction)
+    limits = _limits_from(ns)
+    results = {gif: check(gif, limits, ns.tolerance, ns.min_fraction) for gif in ns.gifs}
+    all_ok = all(r.ok for r in results.values())
     if ns.json:
-        print(json.dumps(result.to_dict(), indent=2))
+        payload = {gif: r.to_dict() for gif, r in results.items()}
+        print(json.dumps(payload[ns.gifs[0]] if len(ns.gifs) == 1 else payload, indent=2))
     else:
-        m = result.measurements
-        if m:
-            print(f"{ns.gif}: {m.frames} frames, {m.duration_s}s, {m.changed_frames} changes, "
-                  f"longest still {m.longest_hold_s}s, final still {m.end_hold_s}s, "
-                  f"{m.width}x{m.height}, {m.bytes} bytes")
-        for f in result.failures:
-            print(f"FAIL: {f}")
-        print("PASS" if result.ok else "FAIL")
-    return 0 if result.ok else 1
+        for gif, result in results.items():
+            m = result.measurements
+            if m:
+                print(f"{gif}: {m.frames} frames, {m.duration_s}s, {m.changed_frames} changes, "
+                      f"longest still {m.longest_hold_s}s, final still {m.end_hold_s}s, "
+                      f"{m.width}x{m.height}, {m.bytes} bytes")
+            for f in result.failures:
+                print(f"{gif}: FAIL: {f}" if len(ns.gifs) > 1 else f"FAIL: {f}")
+        print("PASS" if all_ok else "FAIL")
+    if ns.report:
+        with open(ns.report, "w") as fh:
+            json.dump({gif: r.to_dict() for gif, r in results.items()}, fh, indent=2)
+            fh.write("\n")
+    return 0 if all_ok else 1
 
 
 def cmd_encode(ns: argparse.Namespace) -> int:
@@ -120,8 +128,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = p.add_subparsers(dest="command", required=True)
 
     c = sub.add_parser("check", help="verify a GIF against limits; exit 1 if any fails")
-    c.add_argument("gif")
+    c.add_argument("gifs", nargs="+", metavar="gif", help="one or more GIFs; the exit code is 1 if any fails")
     c.add_argument("--json", action="store_true", help="print the measurements and failures as JSON")
+    c.add_argument("--report", metavar="FILE", help="also write the results of every file as JSON to FILE")
     _add_check_limits(c)
     c.set_defaults(func=cmd_check)
 

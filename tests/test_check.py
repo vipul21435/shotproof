@@ -66,3 +66,17 @@ def test_cli_exit_codes(gif_factory, capsys):
     assert main(["check", path, "--json", "--no-limit"]) == 0
     assert '"ok": true' in capsys.readouterr().out
     assert main(["check", str(path) + ".missing"]) == 1  # decode failure is a failed check
+
+
+def test_cli_many_files_and_report(gif_factory, tmp_path, capsys):
+    good = gif_factory([(RED, 500), (BLUE, 1500)])
+    bad = gif_factory([(RED, 500), (BLUE, 100), (RED, 100), (BLUE, 100)])
+    report = tmp_path / "report.json"
+    assert main(["check", good, bad, "--max-changes", "1", "--report", str(report)]) == 1
+    out = capsys.readouterr().out
+    assert f"{bad}: FAIL: 3 changed frames exceeds 1" in out
+    assert out.rstrip().endswith("FAIL")
+    import json
+    data = json.loads(report.read_text())
+    assert data[good]["ok"] is True and data[bad]["ok"] is False
+    assert main(["check", good, bad, "--max-changes", "3"]) == 0

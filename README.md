@@ -83,6 +83,9 @@ Limits are flags. The defaults suit a strict reviewer; change them with flags or
 
 Every frame is decoded regardless; a truncated or corrupt file fails with `decode: ...`.
 
+Several files can be checked at once (`shotproof check a.gif b.gif`); the exit code is 1 if any fails, and
+`--report results.json` writes every file's measurements and failures for CI to keep.
+
 `--tolerance` (default 8 levels) and `--min-fraction` (default 0.0005) tune what counts as a change; see *How the checks work*.
 
 ## `shotproof encode`
