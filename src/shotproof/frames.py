@@ -52,3 +52,26 @@ def diff_fraction(a: Image.Image, b: Image.Image, tolerance: int = 8) -> float:
 def is_change(a: Image.Image, b: Image.Image, tolerance: int = 8, min_fraction: float = 0.0005) -> bool:
     """True when ``b`` differs from ``a`` by more than codec noise."""
     return diff_fraction(a, b, tolerance) > min_fraction
+
+
+def contact_sheet(frames: List[Frame], columns: int = 3, thumb_width: int = 320) -> Image.Image:
+    """One image with every frame as a thumbnail and its duration printed under it."""
+    from PIL import ImageDraw
+
+    if not frames:
+        raise ValueError("no frames")
+    w, h = frames[0].image.size
+    tw = min(thumb_width, w)
+    th = max(1, round(h * tw / w))
+    pad, label = 8, 16
+    columns = max(1, min(columns, len(frames)))
+    rows = (len(frames) + columns - 1) // columns
+    sheet = Image.new("RGB", (columns * (tw + pad) + pad, rows * (th + label + pad) + pad), (245, 245, 245))
+    draw = ImageDraw.Draw(sheet)
+    for i, f in enumerate(frames):
+        x = pad + (i % columns) * (tw + pad)
+        y = pad + (i // columns) * (th + label + pad)
+        sheet.paste(f.image.resize((tw, th)), (x, y))
+        draw.rectangle((x - 1, y - 1, x + tw, y + th), outline=(180, 180, 180))
+        draw.text((x, y + th + 2), f"{i}  {f.duration_ms} ms", fill=(40, 40, 40))
+    return sheet

@@ -156,7 +156,11 @@ take-001.png 125ms
 ...
 ```
 
-Writes every frame as a PNG so you can look at exactly what was captured before you share it.
+With an output directory it writes every frame as a PNG; with `--sheet sheet.png` it draws one contact sheet
+of every frame with its duration, which is the fastest way to look at exactly what was captured before you
+share it. The demo's own sheet:
+
+![the six frames of the demo with their durations](docs/demo-sheet.png)
 
 ## How the checks work
 

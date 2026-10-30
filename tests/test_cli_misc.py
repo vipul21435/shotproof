@@ -37,3 +37,16 @@ def test_record_dry_run_cli(capsys):
     assert main(["record", "x.mov", "--move-to", "5,5", "--click", "--dry-run"]) == 0
     assert "click" in capsys.readouterr().out
     assert main(["record", "x.mov", "--click", "--dry-run"]) == 2
+
+
+def test_frames_sheet_and_listing(gif_factory, tmp_path, capsys):
+    from PIL import Image
+
+    path = gif_factory([(RED, 500), (BLUE, 1500), (RED, 100), (BLUE, 100)])
+    sheet = tmp_path / "sheet.png"
+    assert main(["frames", path, "--sheet", str(sheet), "--columns", "2", "--thumb-width", "32"]) == 0
+    im = Image.open(sheet)
+    assert im.size[0] == 2 * (32 + 8) + 8
+    assert im.size[1] > 2 * 24
+    assert main(["frames", path]) == 0
+    assert "1 1500ms" in capsys.readouterr().out

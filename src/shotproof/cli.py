@@ -111,14 +111,21 @@ def cmd_record(ns: argparse.Namespace) -> int:
 
 
 def cmd_frames(ns: argparse.Namespace) -> int:
-    from .frames import load_frames
+    from .frames import contact_sheet, load_frames
 
-    os.makedirs(ns.out_dir, exist_ok=True)
     frames = load_frames(ns.gif)
     stem = os.path.splitext(os.path.basename(ns.gif))[0]
-    for i, f in enumerate(frames):
-        f.image.save(os.path.join(ns.out_dir, f"{stem}-{i:03d}.png"))
-        print(f"{stem}-{i:03d}.png {f.duration_ms}ms")
+    if ns.sheet:
+        contact_sheet(frames, ns.columns, ns.thumb_width).save(ns.sheet)
+        print(f"{ns.sheet}: {len(frames)} frames")
+    if ns.out_dir:
+        os.makedirs(ns.out_dir, exist_ok=True)
+        for i, f in enumerate(frames):
+            f.image.save(os.path.join(ns.out_dir, f"{stem}-{i:03d}.png"))
+            print(f"{stem}-{i:03d}.png {f.duration_ms}ms")
+    if not ns.sheet and not ns.out_dir:
+        for i, f in enumerate(frames):
+            print(f"{i} {f.duration_ms}ms")
     return 0
 
 
@@ -162,9 +169,12 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--dry-run", action="store_true", help="print the timed sequence and exit without touching the pointer or recording")
     r.set_defaults(func=cmd_record)
 
-    f = sub.add_parser("frames", help="write every frame of a GIF as a PNG, for looking at what was captured")
+    f = sub.add_parser("frames", help="list a GIF's frames, dump them as PNGs, or draw a contact sheet")
     f.add_argument("gif")
-    f.add_argument("out_dir")
+    f.add_argument("out_dir", nargs="?", help="write one PNG per frame here")
+    f.add_argument("--sheet", metavar="PNG", help="write one contact sheet with every frame and its duration")
+    f.add_argument("--columns", type=int, default=3)
+    f.add_argument("--thumb-width", type=int, default=320, metavar="PX")
     f.set_defaults(func=cmd_frames)
     return p
 
