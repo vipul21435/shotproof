@@ -2,9 +2,10 @@ name: tests
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
+        os: [ubuntu-latest, macos-latest]
         python: ["3.9", "3.12"]
     steps:
       - uses: actions/checkout@v4
@@ -13,3 +14,5 @@ jobs:
           python-version: ${{ matrix.python }}
       - run: pip install '.[dev]'
       - run: python -m pytest -q
+      - run: shotproof record plan.mov --move-to 10,10 --click --park 1,1 --dry-run
+        if: runner.os == 'macOS'
