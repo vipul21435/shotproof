@@ -1,0 +1,21 @@
+{
+  "input": "demo.mov",
+  "output": "demo.gif",
+  "fps": 8.0,
+  "decoded_frames": 48,
+  "kept_frames": 6,
+  "merged_frames": 42,
+  "duration_s": 6.125,
+  "lead_hold_s": 0.5,
+  "end_hold_s": 3.0,
+  "width": 1200,
+  "height": 780,
+  "bytes": 456161,
+  "marker": [
+    2690,
+    1000,
+    160,
+    70
+  ],
+  "marker_shape": "rect"
+}

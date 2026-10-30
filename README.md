@@ -19,7 +19,7 @@ Only `record` is macOS-bound.
 |---|---|
 | `check` | implemented, tested |
 | `encode` | implemented, tested on a synthetic clip |
-| `record` | implemented; its argument checks are tested, the native path (CoreGraphics events + `screencapture`) is exercised by hand only. See *Demo* below for what has and has not been recorded. |
+| `record` | implemented; its argument checks are tested, the native path (CoreGraphics events + `screencapture`) is exercised by hand, see *Demo* |
 
 ## Install
 
@@ -154,9 +154,22 @@ than being skipped.
 
 ## Demo
 
-A real recording made with these three commands belongs here, with its measured numbers. It has not been
-recorded yet: the display this was built on was in use. Until it lands, the numbers above come from the
-synthetic clip in `tests/test_encode_clip.py`.
+![a scripted click on a locally served order page; the total does not update](docs/demo.gif)
+
+Made on a laptop display with the three commands as published, nothing edited afterwards:
+
+```
+$ shotproof record demo.mov --seconds 6 --lead 1.5 --move-to 420,572 --click --park 1380,560 --settle 0.4
+$ shotproof encode demo.mov demo.gif --fps 8 --max-width 1200 --end-hold 1.5 --marker 2690,1000,160,70
+$ shotproof check demo.gif --min-end-hold 1.5 --max-changes 8
+demo.gif: 6 frames, 6.11s, 5 changes, longest still 3.0s, final still 3.0s, 1200x780, 456161 bytes
+PASS
+```
+
+The encode report is [docs/demo.gif.json](docs/demo.gif.json): 48 frames decoded at 8 fps, 42 merged as noise,
+6 kept. Of the 5 changes, 2 are the system's own screen-recording indicator settling in the menu bar during the
+first second, then the pointer arriving on the button, the click's result, and the pointer parking. The last
+frame holds for 3.0 s because the parked tail already lasted longer than `--end-hold`.
 
 ## Limitations
 
@@ -166,6 +179,9 @@ synthetic clip in `tests/test_encode_clip.py`.
 - Change detection is per pixel and global; it does not know about regions, so a clock in a status bar counts
   as a change every time it ticks. Crop or park such things out of frame, or raise `--min-fraction`.
 - GIF timing is in centiseconds; durations are rounded by the writer.
+- The system's screen-recording indicator appears in the menu bar during the first second of a `record` take
+  and counts as one or two changes. Use `--lead` so it has settled before the action, or raise `--max-changes`
+  by two.
 
 ## Licence
 
