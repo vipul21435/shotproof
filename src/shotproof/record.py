@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import math
 import os
 import shutil
 import subprocess
@@ -121,7 +122,7 @@ def plan(opts: RecordOptions) -> List[str]:
 
 
 def _validate(opts: RecordOptions) -> None:
-    if opts.seconds < 1 or opts.seconds != int(opts.seconds):
+    if not math.isfinite(opts.seconds) or opts.seconds < 1 or opts.seconds != int(opts.seconds):
         raise ValueError("seconds must be a whole number of at least 1 (screencapture counts whole seconds)")
     if opts.click and opts.move_to is None:
         raise ValueError("--click needs --move-to")

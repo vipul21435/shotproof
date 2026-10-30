@@ -59,9 +59,8 @@ def test_encode_marker_and_scale(clip, tmp_path):
     assert (report["width"], report["height"]) == (80, 60)
     assert report["marker"] == [110, 40, 31, 31]
     im = Image.open(out).convert("RGB")
-    # the marker is drawn at half scale: x 55, y 20, 16 wide; its left edge is red-ish on every frame
-    r, g, b = im.getpixel((55, 28))
-    assert r > 150 and g < 100 and b < 100
+    # the marker is drawn at half scale: x 55, y 20, 16 wide; its left edge carries the marker's exact colour
+    assert im.getpixel((55, 28)) == (230, 40, 40)
 
 
 def test_encode_cli(clip, tmp_path, capsys):
@@ -79,8 +78,7 @@ def test_encode_crop_moves_marker(clip, tmp_path):
     assert (report["width"], report["height"]) == (160, 60)
     assert report["crop"] == [0, 30, 160, 60]
     im = Image.open(out).convert("RGB")
-    r, g, b = im.getpixel((110, 20))  # marker's left edge, now at y 40-30
-    assert r > 150 and g < 100 and b < 100
+    assert im.getpixel((110, 20)) == (230, 40, 40)  # marker's left edge, now at y 40-30
     assert im.getpixel((5, 55))[0] > 200  # no dark bar: it was below the crop
 
 
@@ -120,3 +118,18 @@ def test_shared_palette_keeps_stills_identical(tmp_path):
     assert [f.duration_ms for f in frames] == [200, 100, 100]
     assert diff_fraction(frames[0].image, frames[2].image, tolerance=0) == 0.0
     assert diff_fraction(frames[0].image, frames[1].image) > 0.05
+
+
+def test_marker_colour_survives_a_small_palette(tmp_path):
+    """A thin marker over a busy frame must keep its own palette entry even at 16 colours."""
+    from shotproof.encode import draw_marker, write_gif
+
+    base = Image.new("RGB", (640, 360))
+    px = base.load()
+    for y in range(360):
+        for x in range(640):
+            px[x, y] = ((x * 7) % 256, (y * 5) % 256, ((x + y) * 3) % 256)
+    marked = draw_marker(base, (100, 100, 200, 60), "rect", (230, 40, 40), 4)
+    out = str(tmp_path / "m.gif")
+    write_gif(out, [marked], [500], colors=16, keep=[(230, 40, 40)])
+    assert Image.open(out).convert("RGB").getpixel((100, 130)) == (230, 40, 40)

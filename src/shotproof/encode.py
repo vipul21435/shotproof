@@ -7,7 +7,7 @@ import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Tuple
+from typing import Iterator, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw
 
@@ -144,19 +144,29 @@ def gif_delays(durations: List[int]) -> List[int]:
     return [max(20, round(d / 10) * 10) for d in durations]
 
 
-def shared_palette(frames: List[Image.Image], colors: int) -> Image.Image:
-    """One palette built from every kept frame, so frames that match in RGB match pixel for pixel in the GIF."""
+def shared_palette(frames: List[Image.Image], colors: int, keep: Sequence[Tuple[int, int, int]] = ()) -> Image.Image:
+    """One palette built from every kept frame, so frames that match in RGB match pixel for pixel in the GIF.
+
+    Frames are sampled with NEAREST so thin features keep their colour instead of blending into the
+    background, and each colour in ``keep`` (the marker's) is given a block of its own so it gets an entry.
+    """
     w, h = frames[0].size
     tw = max(1, min(w, 256))
     th = max(1, round(h * tw / w))
-    strip = Image.new("RGB", (tw, th * len(frames)))
+    swatch = th // 2 if keep else 0
+    strip = Image.new("RGB", (tw, th * len(frames) + swatch))
     for i, f in enumerate(frames):
-        strip.paste(f.resize((tw, th)), (0, i * th))
+        strip.paste(f.resize((tw, th), Image.NEAREST), (0, i * th))
+    if keep:
+        cell = max(1, tw // len(keep))
+        for i, colour in enumerate(keep):
+            strip.paste(Image.new("RGB", (cell, swatch), colour), (i * cell, th * len(frames)))
     return strip.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
 
 
-def write_gif(path: str, frames: List[Image.Image], durations: List[int], colors: int) -> None:
-    palette = shared_palette(frames, colors)
+def write_gif(path: str, frames: List[Image.Image], durations: List[int], colors: int,
+              keep: Sequence[Tuple[int, int, int]] = ()) -> None:
+    palette = shared_palette(frames, colors, keep)
     pal = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
     pal[0].save(path, save_all=True, append_images=pal[1:], duration=durations, loop=0, disposal=1, optimize=False)
 
@@ -188,7 +198,7 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
     durations[0] = max(durations[0], round(opts.lead_hold * 1000))
     durations[-1] = max(durations[-1], round(opts.end_hold * 1000))
     durations = gif_delays(durations)  # report what the file carries, not what was asked for
-    write_gif(out, frames, durations, opts.colors)
+    write_gif(out, frames, durations, opts.colors, keep=[opts.marker_color] if opts.marker else [])
     report = {
         "input": os.path.basename(clip),
         "output": os.path.basename(out),

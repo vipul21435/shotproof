@@ -205,7 +205,7 @@ Made on a laptop display with the three commands as published, nothing edited af
 $ shotproof record demo.mov --seconds 6 --lead 1.5 --move-to 420,572 --click --park 1380,560 --settle 0.4
 $ shotproof encode demo.mov demo.gif --fps 8 --max-width 1200 --end-hold 1.5 --marker 2690,1000,160,70
 $ shotproof check demo.gif --min-end-hold 1.5 --max-changes 8
-demo.gif: 6 frames, 6.13s, 4 changes, longest still 3.0s, final still 3.0s, 1200x780, 384775 bytes
+demo.gif: 6 frames, 6.13s, 4 changes, longest still 3.0s, final still 3.0s, 1200x780, 411695 bytes
 PASS
 ```
 

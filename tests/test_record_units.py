@@ -23,6 +23,9 @@ def test_record_argument_checks(tmp_path, monkeypatch):
         record(RecordOptions(out=str(tmp_path / "a.mov"), seconds=0))
     with pytest.raises(ValueError):
         record(RecordOptions(out=str(tmp_path / "a.mov"), click=True))
+    for bad in (float("inf"), 6.5, 0.4):
+        with pytest.raises(ValueError):
+            record(RecordOptions(out=str(tmp_path / "a.mov"), seconds=bad))
 
 
 def test_record_refuses_other_platforms(tmp_path, monkeypatch):
