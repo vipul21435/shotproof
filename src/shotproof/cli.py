@@ -59,7 +59,8 @@ def cmd_check(ns: argparse.Namespace) -> int:
         for gif, result in results.items():
             m = result.measurements
             if m:
-                print(f"{gif}: {m.frames} frames, {m.duration_s}s, {m.changed_frames} changes, "
+                noun = "change" if m.changed_frames == 1 else "changes"
+                print(f"{gif}: {m.frames} frames, {m.duration_s}s, {m.changed_frames} {noun}, "
                       f"longest still {m.longest_hold_s}s, final still {m.end_hold_s}s, "
                       f"{m.width}x{m.height}, {m.bytes} bytes")
             for f in result.failures:

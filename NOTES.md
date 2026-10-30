@@ -28,9 +28,9 @@ State of the repository at the end of its first day of work.
   not exercised in the demo.
 - No PyPI release; install from the repository.
 
-## Repository visibility
+## Owner's checklist
 
-The repository was created private. To make it public:
+The repository was created private; the README's clone line only works once it is public:
 
 ```
 gh repo edit vipul21435/shotproof --visibility public --accept-visibility-change-consequences

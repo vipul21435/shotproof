@@ -14,17 +14,41 @@ Four commands, one Python package, no service, no accounts:
 `check` is pure Python + Pillow and runs anywhere, CI included. `encode` adds `imageio-ffmpeg` for decoding.
 Only `record` is macOS-bound.
 
+## Demo
+
+![a scripted click on a locally served order page; the total does not update](docs/demo.gif)
+
+Made on a laptop display with the commands as published, nothing edited afterwards:
+
+```
+$ shotproof record demo.mov --seconds 6 --lead 1.5 --move-to 420,572 --click --park 1380,560 --settle 0.4
+$ shotproof encode demo.mov demo.gif --fps 8 --max-width 1200 --end-hold 1.5 --marker 2690,1000,160,70
+$ shotproof check demo.gif --min-end-hold 1.5 --max-changes 8
+demo.gif: 6 frames, 6.13s, 4 changes, longest still 3.0s, final still 3.0s, 1200x780, 411695 bytes
+PASS
+```
+
+The encode report is [docs/demo.gif.json](docs/demo.gif.json): 48 frames decoded at 8 fps, 42 merged as noise,
+6 kept. `check` counts 4 changes rather than 5 because the second kept frame (the system's recording indicator
+finishing its fade-in, 120 ms after the first) lands just under the change threshold once the GIF palette has
+flattened it; the count is the same at `--tolerance 8`, `16` and `32`. The four are the indicator appearing,
+the pointer arriving on the button, the click's result, and the pointer parking. The last frame holds for
+3.0 s because the parked tail already lasted longer than `--end-hold`.
+
 ## Status
 
 | command | state |
 |---|---|
 | `check` | implemented, tested |
-| `encode` | implemented, tested on a synthetic clip |
-| `record` | implemented; its argument checks are tested, the native path (CoreGraphics events + `screencapture`) is exercised by hand, see *Demo* |
+| `encode` | implemented, tested end to end on a synthetic H.264 clip |
+| `frames` | implemented, tested |
+| `record` | implemented; the plan and argument checks are tested, the native path (CoreGraphics events + `screencapture`) is exercised by hand, see *Demo*; `--keys` has not been used in a recorded take yet |
 
 ## Install
 
 ```
+git clone https://github.com/vipul21435/shotproof
+cd shotproof
 pip install .             # check only
 pip install '.[encode]'   # adds imageio-ffmpeg for encode
 pip install '.[dev]'      # plus pytest
@@ -45,7 +69,7 @@ Python 3.9 or newer.
 
 ```
 $ shotproof check sample.gif --min-end-hold 1.5
-sample.gif: 3 frames, 2.62s, 1 changes, longest still 1.62s, final still 1.62s, 320x200, 1488 bytes
+sample.gif: 3 frames, 2.62s, 1 change, longest still 1.62s, final still 1.62s, 320x200, 1488 bytes
 PASS
 ```
 
@@ -70,7 +94,8 @@ $ shotproof check sample.gif --max-changes 0 --json
 }
 ```
 
-Limits are flags. The defaults suit a strict reviewer; change them with flags or disable them all with `--no-limit`:
+Limits are flags. The defaults are my own idea of a strict reviewer (a short clip, few changes, a few megabytes);
+change them with flags or disable them all with `--no-limit`:
 
 | flag | default | checks |
 |---|---|---|
@@ -87,7 +112,8 @@ Several files can be checked at once (`shotproof check a.gif b.gif`); the exit c
 `--report results.json` writes every file's measurements and failures for CI to keep.
 
 `--tolerance` (default 8 levels) and `--min-fraction` (default 0.0005) tune what counts as a change, and
-`--ignore X,Y,W,H` (repeatable, GIF pixels) leaves a region such as a clock out of it; see *How the checks work*.
+`--ignore X,Y,W,H` (repeatable, GIF pixels) leaves a region such as a clock out of it; *How the checks work*
+below explains both.
 
 ## `shotproof encode`
 
@@ -116,16 +142,21 @@ $ shotproof encode take.mov take.gif --fps 8 --end-hold 1.5 --marker 640,420,180
 
 | flag | default | |
 |---|---|---|
-| `--fps` | 8 | decode rate; also the shortest frame a GIF can carry |
+| `--fps` | 8 | decode rate; one decoded frame lasts 1/fps, so it is the shortest kept frame |
 | `--lead-hold S` | 0.5 | the first frame lasts at least this long |
 | `--end-hold S` | 1.5 | the last frame lasts at least this long |
 | `--max-width PX` | off | scale down to this width (height follows) |
-| `--crop X,Y,W,H` | off | keep only this region of the clip (clip pixels) before scaling; a marker is still given in clip pixels |
-| `--marker X,Y,W,H` | off | one stationary outline over that region of the clip, in clip pixels |
+| `--crop X,Y,W,H` | off | keep only this region of the clip before scaling |
+| `--marker X,Y,W,H` | off | one stationary outline over that region of the clip |
 | `--marker-shape` | rect | `rect` or `ellipse` |
 | `--ignore X,Y,W,H` | off | leave this clip region out of change detection when merging (repeatable) |
 | `--colors` | 128 | palette size |
 | `--tolerance`, `--min-fraction` | 8, 0.0005 | the merge threshold, same meaning as in `check` |
+
+Every region (`--crop`, `--marker`, `--ignore`) is in **clip pixels**: the pixel size of the recording as
+`ffmpeg` reports it, origin top-left, before any crop or scaling. On a Retina display that is twice the screen
+points `record` uses (the demo's button at 420,572 points sits near 840,1144 in the clip). The tool maps them
+through the crop and the scale for you.
 
 ## `shotproof record` (macOS)
 
@@ -134,9 +165,20 @@ $ shotproof record take.mov --seconds 6 --move-to 700,440 --click --park 1300,60
 ```
 
 Sequence: the pointer is parked first (so the clip opens on a clean still), the display records for
-`--seconds` (a whole number, at least 1: `screencapture` counts whole seconds), after `--lead` seconds of stillness the pointer jumps directly to `--move-to` (one warp, no animated
-path), waits `--settle`, clicks if `--click`, types `--keys` if given, then jumps to `--park` and stays there.
-Nothing else moves, so `encode` can merge the tail into a hold.
+`--seconds`, after `--lead` seconds of stillness the pointer jumps directly to `--move-to` (one warp, no
+animated path), waits `--settle`, clicks if `--click`, types `--keys` if given, then jumps to `--park` and
+stays there. Nothing else moves, so `encode` can merge the tail into a hold.
+
+| flag | default | |
+|---|---|---|
+| `--seconds N` | 6 | recording length, a whole number of seconds, at least 1 |
+| `--move-to X,Y` | off | where the pointer jumps before acting |
+| `--click` | off | click there (needs `--move-to`) |
+| `--keys TEXT` | off | type this after the click |
+| `--park X,Y` | off | where the pointer goes first and last, outside the changing region |
+| `--lead S` | 1 | stillness before the move |
+| `--settle S` | 0.3 | pause between move, click, keys and park |
+| `--display N` | 1 | display number as `screencapture` counts them |
 
 `--dry-run` prints the timed sequence and exits without touching the pointer or recording:
 
@@ -151,8 +193,9 @@ $ shotproof record take.mov --move-to 420,572 --click --park 1380,560 --lead 1.5
 ```
 
 Coordinates are in screen points (not Retina pixels), origin top-left of the main display. Pointer events use
-CoreGraphics through `ctypes`; keystrokes go through `osascript`. The first run asks for Screen Recording and
-Accessibility permission for the terminal you run it from.
+CoreGraphics through `ctypes`; keystrokes go through `osascript`. macOS asks for permissions on first use, for
+the terminal you run it from: Screen Recording (the capture comes out black until it is granted and the
+terminal restarted), Accessibility for the pointer events, and Automation (System Events) if you use `--keys`.
 
 ## `shotproof frames`
 
@@ -176,8 +219,9 @@ share it. The demo's own sheet:
 channel differs by more than `--tolerance` levels (default 8). The frame counts as a *change* when more than
 `--min-fraction` of pixels (default 0.05 %) are different. Both thresholds exist because video codecs and
 palette quantisation add noise that is not motion: a few levels everywhere, or a handful of pixels along an
-edge. A cursor blink or a one-character tooltip is well above 0.05 % of a screen; codec shimmer is well below
-it.
+edge. On a 1200x780 GIF 0.05 % is about 470 pixels: a tooltip, a button changing state or a line of text is
+well above it, codec shimmer is well below it, and a blinking text caret (a few dozen pixels) stays below it,
+which is usually what you want.
 
 **Merging (`encode`).** Frames are sampled at `--fps`. A frame that is not a change against the last kept
 frame is dropped and its time is added to that frame's duration. So a six-second clip with one click
@@ -194,27 +238,6 @@ the trailing run only, so a GIF whose longest still is in the middle and whose l
 **Decoding.** `check` composites every frame to the full canvas with Pillow, so partial-canvas frames and
 disposal methods are handled before comparison, and a frame that cannot be decoded fails the check rather
 than being skipped.
-
-## Demo
-
-![a scripted click on a locally served order page; the total does not update](docs/demo.gif)
-
-Made on a laptop display with the three commands as published, nothing edited afterwards:
-
-```
-$ shotproof record demo.mov --seconds 6 --lead 1.5 --move-to 420,572 --click --park 1380,560 --settle 0.4
-$ shotproof encode demo.mov demo.gif --fps 8 --max-width 1200 --end-hold 1.5 --marker 2690,1000,160,70
-$ shotproof check demo.gif --min-end-hold 1.5 --max-changes 8
-demo.gif: 6 frames, 6.13s, 4 changes, longest still 3.0s, final still 3.0s, 1200x780, 411695 bytes
-PASS
-```
-
-The encode report is [docs/demo.gif.json](docs/demo.gif.json): 48 frames decoded at 8 fps, 42 merged as noise,
-6 kept. `check` counts 4 changes rather than 5 because the second kept frame (the system's recording indicator
-finishing its fade-in, 120 ms after the first) lands just under the change threshold once the GIF palette has
-flattened it; the count is the same at `--tolerance 8`, `16` and `32`. The four are the indicator appearing,
-the pointer arriving on the button, the click's result, and the pointer parking. The last frame holds for
-3.0 s because the parked tail already lasted longer than `--end-hold`.
 
 ## Limitations
 
