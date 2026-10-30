@@ -11,7 +11,7 @@ from typing import Iterator, List, Optional, Tuple
 
 from PIL import Image, ImageDraw
 
-from .frames import is_change
+from .frames import Rect, is_change, parse_rect  # noqa: F401  (parse_rect is re-exported for the CLI)
 
 Marker = Tuple[int, int, int, int]  # x, y, w, h in clip pixels
 Crop = Tuple[int, int, int, int]  # x, y, w, h in clip pixels
@@ -27,23 +27,11 @@ class EncodeOptions:
     max_width: Optional[int] = None
     crop: Optional[Crop] = None
     marker: Optional[Marker] = None
+    ignore: Tuple[Rect, ...] = ()  # clip-pixel regions left out of change detection
     marker_shape: str = "rect"
     marker_color: Tuple[int, int, int] = (230, 40, 40)
     marker_width: int = 4
     colors: int = 128
-
-
-def parse_rect(text: str, what: str = "marker") -> Tuple[int, int, int, int]:
-    parts = [p.strip() for p in text.split(",")]
-    if len(parts) != 4:
-        raise ValueError(f"{what} must be X,Y,W,H")
-    try:
-        x, y, w, h = (int(p) for p in parts)
-    except ValueError:
-        raise ValueError(f"{what} must be four integers X,Y,W,H") from None
-    if w <= 0 or h <= 0:
-        raise ValueError(f"{what} width and height must be positive")
-    return x, y, w, h
 
 
 def parse_marker(text: str) -> Marker:
@@ -123,14 +111,15 @@ def decode_frames(clip: str, fps: float, max_width: Optional[int] = None, crop: 
             raise RuntimeError(f"ffmpeg failed: {err.strip()}")
 
 
-def merge_frames(frames: List[Image.Image], frame_ms: int, tolerance: int, min_fraction: float) -> Tuple[List[Image.Image], List[int]]:
+def merge_frames(frames: List[Image.Image], frame_ms: int, tolerance: int, min_fraction: float,
+                 ignore: Optional[List[Rect]] = None) -> Tuple[List[Image.Image], List[int]]:
     """Collapse runs of frames that differ only by codec noise into one frame with a longer duration."""
     if not frames:
         return [], []
     kept = [frames[0]]
     durations = [frame_ms]
     for f in frames[1:]:
-        if is_change(kept[-1], f, tolerance, min_fraction):
+        if is_change(kept[-1], f, tolerance, min_fraction, ignore):
             kept.append(f)
             durations.append(frame_ms)
         else:
@@ -168,14 +157,20 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
     raw = list(decode_frames(clip, opts.fps, opts.max_width, opts.crop))
     if not raw:
         raise ValueError(f"no frames decoded from {clip}")
-    frames, durations = merge_frames(raw, frame_ms, opts.tolerance, opts.min_fraction)
-    if opts.marker:
-        # The marker is given in clip pixels; move it into the cropped, scaled output.
+    to_output = None
+    if opts.marker or opts.ignore:
+        # Marker and ignore regions are given in clip pixels; move them into the cropped, scaled output.
         _, _, _, sx, sy = _geometry(_probe_size(_ffmpeg(), clip), opts.crop, opts.max_width)
         ox, oy = (opts.crop[0], opts.crop[1]) if opts.crop else (0, 0)
-        x, y, w, h = opts.marker
-        scaled = (round((x - ox) * sx), round((y - oy) * sy), max(1, round(w * sx)), max(1, round(h * sy)))
-        frames = [draw_marker(f, scaled, opts.marker_shape, opts.marker_color, opts.marker_width) for f in frames]
+
+        def to_output(rect: Rect) -> Rect:
+            x, y, w, h = rect
+            return round((x - ox) * sx), round((y - oy) * sy), max(1, round(w * sx)), max(1, round(h * sy))
+
+    ignore = [to_output(r) for r in opts.ignore] if opts.ignore else None
+    frames, durations = merge_frames(raw, frame_ms, opts.tolerance, opts.min_fraction, ignore)
+    if opts.marker:
+        frames = [draw_marker(f, to_output(opts.marker), opts.marker_shape, opts.marker_color, opts.marker_width) for f in frames]
     durations[0] = max(durations[0], round(opts.lead_hold * 1000))
     durations[-1] = max(durations[-1], round(opts.end_hold * 1000))
     durations = gif_delays(durations)  # report what the file carries, not what was asked for
@@ -194,6 +189,7 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
         "height": frames[0].size[1],
         "bytes": os.path.getsize(out),
         "crop": list(opts.crop) if opts.crop else None,
+        "ignore": [list(r) for r in opts.ignore],
         "marker": list(opts.marker) if opts.marker else None,
         "marker_shape": opts.marker_shape if opts.marker else None,
     }

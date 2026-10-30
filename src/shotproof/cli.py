@@ -11,6 +11,7 @@ from typing import List, Optional
 
 from . import __version__
 from .check import Limits, check
+from .frames import parse_rect
 
 
 def _add_check_limits(p: argparse.ArgumentParser) -> None:
@@ -26,6 +27,7 @@ def _add_check_limits(p: argparse.ArgumentParser) -> None:
     s = p.add_argument_group("change detection")
     s.add_argument("--tolerance", type=int, default=8, metavar="LEVELS", help="per-channel difference treated as noise (default 8)")
     s.add_argument("--min-fraction", type=float, default=0.0005, metavar="F", help="fraction of pixels that must differ to count as a change (default 0.0005)")
+    s.add_argument("--ignore", action="append", default=[], metavar="X,Y,W,H", help="leave this region out of change detection (repeatable); GIF pixels")
 
 
 def _limits_from(ns: argparse.Namespace) -> Limits:
@@ -47,7 +49,8 @@ def cmd_check(ns: argparse.Namespace) -> int:
     missing = [g for g in ns.gifs if not os.path.exists(g)]
     if missing:
         raise FileNotFoundError(", ".join(missing))
-    results = {gif: check(gif, limits, ns.tolerance, ns.min_fraction) for gif in ns.gifs}
+    ignore = [parse_rect(r, "ignore") for r in ns.ignore]
+    results = {gif: check(gif, limits, ns.tolerance, ns.min_fraction, ignore) for gif in ns.gifs}
     all_ok = all(r.ok for r in results.values())
     if ns.json:
         payload = {gif: r.to_dict() for gif, r in results.items()}
@@ -70,10 +73,11 @@ def cmd_check(ns: argparse.Namespace) -> int:
 
 
 def cmd_encode(ns: argparse.Namespace) -> int:
-    from .encode import encode, EncodeOptions, parse_marker, parse_rect
+    from .encode import encode, EncodeOptions, parse_marker
 
     marker = parse_marker(ns.marker) if ns.marker else None
     crop = parse_rect(ns.crop, "crop") if ns.crop else None
+    ignore = tuple(parse_rect(r, "ignore") for r in ns.ignore)
     opts = EncodeOptions(
         fps=ns.fps,
         lead_hold=ns.lead_hold,
@@ -83,6 +87,7 @@ def cmd_encode(ns: argparse.Namespace) -> int:
         max_width=ns.max_width,
         crop=crop,
         marker=marker,
+        ignore=ignore,
         marker_shape=ns.marker_shape,
         colors=ns.colors,
     )
@@ -155,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--crop", default=None, metavar="X,Y,W,H", help="keep only this region of the clip, in clip pixels, before scaling")
     e.add_argument("--marker", default=None, metavar="X,Y,W,H", help="draw one stationary marker over this region")
     e.add_argument("--marker-shape", choices=["rect", "ellipse"], default="rect")
+    e.add_argument("--ignore", action="append", default=[], metavar="X,Y,W,H", help="leave this clip region out of change detection when merging (repeatable)")
     e.add_argument("--colors", type=int, default=128, help="palette size (default 128)")
     e.add_argument("--tolerance", type=int, default=8, metavar="LEVELS")
     e.add_argument("--min-fraction", type=float, default=0.0005, metavar="F")

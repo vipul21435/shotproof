@@ -86,7 +86,8 @@ Every frame is decoded regardless; a truncated or corrupt file fails with `decod
 Several files can be checked at once (`shotproof check a.gif b.gif`); the exit code is 1 if any fails, and
 `--report results.json` writes every file's measurements and failures for CI to keep.
 
-`--tolerance` (default 8 levels) and `--min-fraction` (default 0.0005) tune what counts as a change; see *How the checks work*.
+`--tolerance` (default 8 levels) and `--min-fraction` (default 0.0005) tune what counts as a change, and
+`--ignore X,Y,W,H` (repeatable, GIF pixels) leaves a region such as a clock out of it; see *How the checks work*.
 
 ## `shotproof encode`
 
@@ -122,6 +123,7 @@ $ shotproof encode take.mov take.gif --fps 8 --end-hold 1.5 --marker 640,420,180
 | `--crop X,Y,W,H` | off | keep only this region of the clip (clip pixels) before scaling; a marker is still given in clip pixels |
 | `--marker X,Y,W,H` | off | one stationary outline over that region of the clip, in clip pixels |
 | `--marker-shape` | rect | `rect` or `ellipse` |
+| `--ignore X,Y,W,H` | off | leave this clip region out of change detection when merging (repeatable) |
 | `--colors` | 128 | palette size |
 | `--tolerance`, `--min-fraction` | 8, 0.0005 | the merge threshold, same meaning as in `check` |
 
@@ -214,8 +216,8 @@ frame holds for 3.0 s because the parked tail already lasted longer than `--end-
 - `record` is macOS only, main display only (`--display` selects another, but there is no multi-display
   capture), no audio, no window-only capture.
 - `encode` needs the `imageio-ffmpeg` extra; it bundles an ffmpeg binary, nothing is read from `PATH`.
-- Change detection is per pixel and global; it does not know about regions, so a clock in a status bar counts
-  as a change every time it ticks. Crop or park such things out of frame, or raise `--min-fraction`.
+- Change detection is per pixel; a clock in a status bar counts as a change every time it ticks unless you
+  `--ignore` its region, `--crop` it out, or raise `--min-fraction`.
 - GIF timing is in centiseconds; `encode` rounds every delay to a whole centisecond before writing and reports
   those rounded values, so the report matches the file. `check` measures a delay under 20 ms as 100 ms,
   because that is how browsers play it.

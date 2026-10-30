@@ -88,3 +88,14 @@ def test_encode_crop_outside_clip(clip, tmp_path):
     with pytest.raises(ValueError):
         encode(clip, str(tmp_path / "x.gif"), EncodeOptions(crop=(100, 100, 100, 100)))
     assert main(["encode", clip, str(tmp_path / "x.gif"), "--crop", "100,100,100,100"]) == 2
+
+
+def test_encode_ignore_region(clip, tmp_path):
+    # ignoring the whole band the box moves in leaves a clip with no changes at all
+    out = str(tmp_path / "ignored.gif")
+    report = encode(clip, out, EncodeOptions(fps=10, ignore=((0, 35, 160, 40),)))
+    assert report["kept_frames"] == 1
+    assert report["ignore"] == [[0, 35, 160, 40]]
+    # ignore regions are mapped through crop and scale like the marker
+    report = encode(clip, out, EncodeOptions(fps=10, max_width=80, crop=(0, 30, 160, 60), ignore=((0, 35, 160, 40),)))
+    assert report["kept_frames"] == 1

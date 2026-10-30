@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageChops, ImageSequence
+
+Rect = Tuple[int, int, int, int]  # x, y, w, h
 
 
 @dataclass
@@ -41,22 +43,47 @@ def effective_delay(duration_ms: int) -> int:
     return 100 if duration_ms < 20 else duration_ms
 
 
-def diff_fraction(a: Image.Image, b: Image.Image, tolerance: int = 8) -> float:
-    """Fraction of pixels whose largest channel difference exceeds ``tolerance``."""
+def diff_fraction(a: Image.Image, b: Image.Image, tolerance: int = 8, ignore: Optional[Sequence[Rect]] = None) -> float:
+    """Fraction of compared pixels whose largest channel difference exceeds ``tolerance``.
+
+    Pixels inside any ``ignore`` rectangle are left out of both the count and the total, so a clock or a
+    status indicator can tick without counting as a change.
+    """
     if a.size != b.size:
         return 1.0
     diff = ImageChops.difference(a, b)
     r, g, bl = diff.split()
     biggest = ImageChops.lighter(ImageChops.lighter(r, g), bl)
     mask = biggest.point(lambda v: 255 if v > tolerance else 0)
-    changed = mask.histogram()[255]
     total = a.size[0] * a.size[1]
-    return changed / total if total else 0.0
+    if ignore:
+        from PIL import ImageDraw
+
+        draw = ImageDraw.Draw(mask)
+        for x, y, w, h in ignore:
+            draw.rectangle((x, y, x + w - 1, y + h - 1), fill=0)
+            total -= max(0, min(x + w, a.size[0]) - max(x, 0)) * max(0, min(y + h, a.size[1]) - max(y, 0))
+    changed = mask.histogram()[255]
+    return changed / total if total > 0 else 0.0
 
 
-def is_change(a: Image.Image, b: Image.Image, tolerance: int = 8, min_fraction: float = 0.0005) -> bool:
-    """True when ``b`` differs from ``a`` by more than codec noise."""
-    return diff_fraction(a, b, tolerance) > min_fraction
+def is_change(a: Image.Image, b: Image.Image, tolerance: int = 8, min_fraction: float = 0.0005,
+              ignore: Optional[Sequence[Rect]] = None) -> bool:
+    """True when ``b`` differs from ``a`` by more than codec noise outside the ignored regions."""
+    return diff_fraction(a, b, tolerance, ignore) > min_fraction
+
+
+def parse_rect(text: str, what: str = "region") -> Rect:
+    parts = [p.strip() for p in text.split(",")]
+    if len(parts) != 4:
+        raise ValueError(f"{what} must be X,Y,W,H")
+    try:
+        x, y, w, h = (int(p) for p in parts)
+    except ValueError:
+        raise ValueError(f"{what} must be four integers X,Y,W,H") from None
+    if w <= 0 or h <= 0:
+        raise ValueError(f"{what} width and height must be positive")
+    return x, y, w, h
 
 
 def contact_sheet(frames: List[Frame], columns: int = 3, thumb_width: int = 320) -> Image.Image:

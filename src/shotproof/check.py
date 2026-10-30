@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field, asdict
-from typing import List, Optional
+from typing import List, Optional, Sequence
 
-from .frames import load_frames, is_change
+from .frames import Rect, load_frames, is_change
 
 
 @dataclass
@@ -50,7 +50,7 @@ class Result:
         }
 
 
-def measure(path: str, tolerance: int = 8, min_fraction: float = 0.0005) -> Measurements:
+def measure(path: str, tolerance: int = 8, min_fraction: float = 0.0005, ignore: Optional[Sequence[Rect]] = None) -> Measurements:
     frames = load_frames(path)
     if not frames:
         raise ValueError("no frames")
@@ -58,7 +58,7 @@ def measure(path: str, tolerance: int = 8, min_fraction: float = 0.0005) -> Meas
     longest = 0.0
     run = frames[0].duration_ms / 1000.0
     for prev, cur in zip(frames, frames[1:]):
-        if is_change(prev.image, cur.image, tolerance, min_fraction):
+        if is_change(prev.image, cur.image, tolerance, min_fraction, ignore):
             changed += 1
             longest = max(longest, run)
             run = cur.duration_ms / 1000.0
@@ -81,9 +81,10 @@ def measure(path: str, tolerance: int = 8, min_fraction: float = 0.0005) -> Meas
     )
 
 
-def check(path: str, limits: Limits, tolerance: int = 8, min_fraction: float = 0.0005) -> Result:
+def check(path: str, limits: Limits, tolerance: int = 8, min_fraction: float = 0.0005,
+          ignore: Optional[Sequence[Rect]] = None) -> Result:
     try:
-        m = measure(path, tolerance, min_fraction)
+        m = measure(path, tolerance, min_fraction, ignore)
     except ValueError as exc:
         return Result(None, [f"decode: {exc}"])
     fails: List[str] = []
