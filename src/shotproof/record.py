@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 Point = Tuple[float, float]
 
@@ -92,6 +92,35 @@ def type_text(text: str) -> None:
 
 def _applescript_string(text: str) -> str:
     return '"' + text.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def plan(opts: RecordOptions) -> List[str]:
+    """The timed sequence ``record`` will perform, one line per step, with no side effects."""
+    if opts.seconds <= 0:
+        raise ValueError("seconds must be positive")
+    if opts.click and opts.move_to is None:
+        raise ValueError("--click needs --move-to")
+    t = 0.0
+    steps: List[str] = []
+    if opts.park:
+        steps.append(f"{t:5.2f}s  park pointer at {opts.park[0]:g},{opts.park[1]:g}")
+    steps.append(f"{t:5.2f}s  start recording display {opts.display} for {opts.seconds:g}s -> {opts.out}")
+    t += opts.lead
+    if opts.move_to:
+        steps.append(f"{t:5.2f}s  move pointer to {opts.move_to[0]:g},{opts.move_to[1]:g}")
+        t += opts.settle
+        if opts.click:
+            steps.append(f"{t:5.2f}s  click")
+    if opts.keys:
+        t += opts.settle
+        steps.append(f"{t:5.2f}s  type {opts.keys!r}")
+    if opts.park:
+        t += opts.settle
+        steps.append(f"{t:5.2f}s  park pointer at {opts.park[0]:g},{opts.park[1]:g}")
+    steps.append(f"{opts.seconds:5.2f}s  recording ends")
+    if t >= opts.seconds:
+        steps.append(f"WARNING: the last action is at {t:.2f}s but the recording ends at {opts.seconds:g}s")
+    return steps
 
 
 def record(opts: RecordOptions) -> str:

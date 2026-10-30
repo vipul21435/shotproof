@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import List, Optional
 
@@ -57,9 +58,10 @@ def cmd_check(ns: argparse.Namespace) -> int:
 
 
 def cmd_encode(ns: argparse.Namespace) -> int:
-    from .encode import encode, EncodeOptions, parse_marker
+    from .encode import encode, EncodeOptions, parse_marker, parse_rect
 
     marker = parse_marker(ns.marker) if ns.marker else None
+    crop = parse_rect(ns.crop, "crop") if ns.crop else None
     opts = EncodeOptions(
         fps=ns.fps,
         lead_hold=ns.lead_hold,
@@ -67,6 +69,7 @@ def cmd_encode(ns: argparse.Namespace) -> int:
         tolerance=ns.tolerance,
         min_fraction=ns.min_fraction,
         max_width=ns.max_width,
+        crop=crop,
         marker=marker,
         marker_shape=ns.marker_shape,
         colors=ns.colors,
@@ -77,7 +80,7 @@ def cmd_encode(ns: argparse.Namespace) -> int:
 
 
 def cmd_record(ns: argparse.Namespace) -> int:
-    from .record import record, RecordOptions, parse_point
+    from .record import record, plan, RecordOptions, parse_point
 
     opts = RecordOptions(
         out=ns.out,
@@ -90,8 +93,24 @@ def cmd_record(ns: argparse.Namespace) -> int:
         settle=ns.settle,
         display=ns.display,
     )
+    if ns.dry_run:
+        for line in plan(opts):
+            print(line)
+        return 0
     path = record(opts)
     print(path)
+    return 0
+
+
+def cmd_frames(ns: argparse.Namespace) -> int:
+    from .frames import load_frames
+
+    os.makedirs(ns.out_dir, exist_ok=True)
+    frames = load_frames(ns.gif)
+    stem = os.path.splitext(os.path.basename(ns.gif))[0]
+    for i, f in enumerate(frames):
+        f.image.save(os.path.join(ns.out_dir, f"{stem}-{i:03d}.png"))
+        print(f"{stem}-{i:03d}.png {f.duration_ms}ms")
     return 0
 
 
@@ -113,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
     e.add_argument("--lead-hold", type=float, default=0.5, metavar="S", help="hold the first frame for S seconds (default 0.5)")
     e.add_argument("--end-hold", type=float, default=1.5, metavar="S", help="hold the last frame for S seconds (default 1.5)")
     e.add_argument("--max-width", type=int, default=None, metavar="PX", help="scale down so width is at most PX")
+    e.add_argument("--crop", default=None, metavar="X,Y,W,H", help="keep only this region of the clip, in clip pixels, before scaling")
     e.add_argument("--marker", default=None, metavar="X,Y,W,H", help="draw one stationary marker over this region")
     e.add_argument("--marker-shape", choices=["rect", "ellipse"], default="rect")
     e.add_argument("--colors", type=int, default=128, help="palette size (default 128)")
@@ -130,7 +150,13 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--lead", type=float, default=1.0, metavar="S", help="seconds of stillness before the action (default 1)")
     r.add_argument("--settle", type=float, default=0.3, metavar="S", help="seconds between the move and the click (default 0.3)")
     r.add_argument("--display", type=int, default=1, help="display number as screencapture counts them (default 1, the main display)")
+    r.add_argument("--dry-run", action="store_true", help="print the timed sequence and exit without touching the pointer or recording")
     r.set_defaults(func=cmd_record)
+
+    f = sub.add_parser("frames", help="write every frame of a GIF as a PNG, for looking at what was captured")
+    f.add_argument("gif")
+    f.add_argument("out_dir")
+    f.set_defaults(func=cmd_frames)
     return p
 
 

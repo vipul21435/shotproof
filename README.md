@@ -8,6 +8,7 @@ Three commands, one Python package, no service, no accounts:
 |---|---|
 | `shotproof record` | (macOS) drives one scripted pointer move, click or keystroke, parks the pointer, and captures the display to a `.mov` |
 | `shotproof encode` | turns a clip into a GIF: fixed decode rate, codec-noise frames merged, a leading still and a trailing hold, an optional stationary marker, and a JSON report beside the output |
+| `shotproof frames` | dumps a GIF's frames as PNGs for a look before sharing |
 | `shotproof check` | measures a GIF (duration, changed frames, longest still and whether it ends the file, byte and pixel size, full decode) and exits 1 when a limit is exceeded |
 
 `check` is pure Python + Pillow and runs anywhere, CI included. `encode` adds `imageio-ffmpeg` for decoding.
@@ -110,6 +111,7 @@ The same report is written to `take.gif.json`. Flags:
 | `--lead-hold S` | 0.5 | the first frame lasts at least this long |
 | `--end-hold S` | 1.5 | the last frame lasts at least this long |
 | `--max-width PX` | off | scale down to this width (height follows) |
+| `--crop X,Y,W,H` | off | keep only this region of the clip (clip pixels) before scaling; a marker is still given in clip pixels |
 | `--marker X,Y,W,H` | off | one stationary outline over that region of the clip, in clip pixels |
 | `--marker-shape` | rect | `rect` or `ellipse` |
 | `--colors` | 128 | palette size |
@@ -126,9 +128,32 @@ Sequence: the pointer is parked first (so the clip opens on a clean still), the 
 path), waits `--settle`, clicks if `--click`, types `--keys` if given, then jumps to `--park` and stays there.
 Nothing else moves, so `encode` can merge the tail into a hold.
 
+`--dry-run` prints the timed sequence and exits without touching the pointer or recording:
+
+```
+$ shotproof record take.mov --move-to 420,572 --click --park 1380,560 --lead 1.5 --settle 0.4 --dry-run
+ 0.00s  park pointer at 1380,560
+ 0.00s  start recording display 1 for 6s -> take.mov
+ 1.50s  move pointer to 420,572
+ 1.90s  click
+ 2.30s  park pointer at 1380,560
+ 6.00s  recording ends
+```
+
 Coordinates are in screen points (not Retina pixels), origin top-left of the main display. Pointer events use
 CoreGraphics through `ctypes`; keystrokes go through `osascript`. The first run asks for Screen Recording and
 Accessibility permission for the terminal you run it from.
+
+## `shotproof frames`
+
+```
+$ shotproof frames take.gif frames/
+take-000.png 625ms
+take-001.png 125ms
+...
+```
+
+Writes every frame as a PNG so you can look at exactly what was captured before you share it.
 
 ## How the checks work
 
@@ -180,8 +205,8 @@ frame holds for 3.0 s because the parked tail already lasted longer than `--end-
   as a change every time it ticks. Crop or park such things out of frame, or raise `--min-fraction`.
 - GIF timing is in centiseconds; durations are rounded by the writer.
 - The system's screen-recording indicator appears in the menu bar during the first second of a `record` take
-  and counts as one or two changes. Use `--lead` so it has settled before the action, or raise `--max-changes`
-  by two.
+  and counts as one or two changes. Use `--lead` so it has settled before the action, raise `--max-changes`
+  by two, or `--crop` the menu bar out of the encode.
 
 ## Licence
 

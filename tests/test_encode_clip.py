@@ -70,3 +70,21 @@ def test_encode_cli(clip, tmp_path, capsys):
     assert '"kept_frames"' in capsys.readouterr().out
     assert main(["encode", str(tmp_path / "nope.mp4"), out]) == 2
     assert main(["encode", clip, out, "--marker", "1,2"]) == 2
+
+
+def test_encode_crop_moves_marker(clip, tmp_path):
+    out = str(tmp_path / "cropped.gif")
+    # keep the middle band of the clip: the moving box lives at y 40..70, the dark bar at y 100+ is cut off
+    report = encode(clip, out, EncodeOptions(fps=10, crop=(0, 30, 160, 60), marker=(110, 40, 31, 31)))
+    assert (report["width"], report["height"]) == (160, 60)
+    assert report["crop"] == [0, 30, 160, 60]
+    im = Image.open(out).convert("RGB")
+    r, g, b = im.getpixel((110, 20))  # marker's left edge, now at y 40-30
+    assert r > 150 and g < 100 and b < 100
+    assert im.getpixel((5, 55))[0] > 200  # no dark bar: it was below the crop
+
+
+def test_encode_crop_outside_clip(clip, tmp_path):
+    with pytest.raises(ValueError):
+        encode(clip, str(tmp_path / "x.gif"), EncodeOptions(crop=(100, 100, 100, 100)))
+    assert main(["encode", clip, str(tmp_path / "x.gif"), "--crop", "100,100,100,100"]) == 2

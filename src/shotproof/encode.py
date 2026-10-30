@@ -13,6 +13,7 @@ from PIL import Image, ImageDraw
 from .frames import is_change
 
 Marker = Tuple[int, int, int, int]  # x, y, w, h in clip pixels
+Crop = Tuple[int, int, int, int]  # x, y, w, h in clip pixels
 
 
 @dataclass
@@ -23,6 +24,7 @@ class EncodeOptions:
     tolerance: int = 8
     min_fraction: float = 0.0005
     max_width: Optional[int] = None
+    crop: Optional[Crop] = None
     marker: Optional[Marker] = None
     marker_shape: str = "rect"
     marker_color: Tuple[int, int, int] = (230, 40, 40)
@@ -30,17 +32,21 @@ class EncodeOptions:
     colors: int = 128
 
 
-def parse_marker(text: str) -> Marker:
+def parse_rect(text: str, what: str = "marker") -> Tuple[int, int, int, int]:
     parts = [p.strip() for p in text.split(",")]
     if len(parts) != 4:
-        raise ValueError("marker must be X,Y,W,H")
+        raise ValueError(f"{what} must be X,Y,W,H")
     try:
         x, y, w, h = (int(p) for p in parts)
     except ValueError:
-        raise ValueError("marker must be four integers X,Y,W,H") from None
+        raise ValueError(f"{what} must be four integers X,Y,W,H") from None
     if w <= 0 or h <= 0:
-        raise ValueError("marker width and height must be positive")
+        raise ValueError(f"{what} width and height must be positive")
     return x, y, w, h
+
+
+def parse_marker(text: str) -> Marker:
+    return parse_rect(text, "marker")
 
 
 def _ffmpeg() -> str:
@@ -62,18 +68,35 @@ def _probe_size(ffmpeg: str, clip: str) -> Tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
-def decode_frames(clip: str, fps: float, max_width: Optional[int] = None) -> Iterator[Image.Image]:
-    """Yield RGB frames of ``clip`` sampled at ``fps``, scaled to ``max_width`` if given."""
+def _geometry(size: Tuple[int, int], crop: Optional[Crop], max_width: Optional[int]) -> Tuple[Optional[Crop], int, int, float]:
+    """Resolve the crop against the clip size and the output size; returns (crop, out_w, out_h, scale)."""
+    w, h = size
+    if crop:
+        x, y, cw, ch = crop
+        if x < 0 or y < 0 or x + cw > w or y + ch > h:
+            raise ValueError(f"crop {crop} is outside the {w}x{h} clip")
+        w, h = cw, ch
+    scale = 1.0
+    if max_width and w > max_width:
+        scale = max_width / w
+        h = max(2, round(h * scale)) & ~1
+        w = max_width
+    return crop, w, h, scale
+
+
+def decode_frames(clip: str, fps: float, max_width: Optional[int] = None, crop: Optional[Crop] = None) -> Iterator[Image.Image]:
+    """Yield RGB frames of ``clip`` sampled at ``fps``, cropped and scaled to ``max_width`` if given."""
     if not os.path.exists(clip):
         raise FileNotFoundError(clip)
     ffmpeg = _ffmpeg()
-    w, h = _probe_size(ffmpeg, clip)
-    if max_width and w > max_width:
-        h = max(2, round(h * max_width / w)) & ~1
-        w = max_width
+    crop, w, h, _ = _geometry(_probe_size(ffmpeg, clip), crop, max_width)
+    filters = [f"fps={fps}"]
+    if crop:
+        filters.append("crop={2}:{3}:{0}:{1}".format(*crop))
+    filters.append(f"scale={w}:{h}")
     cmd = [
         ffmpeg, "-hide_banner", "-loglevel", "error", "-i", clip,
-        "-vf", f"fps={fps},scale={w}:{h}",
+        "-vf", ",".join(filters),
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
     ]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -129,14 +152,16 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
     if opts.fps <= 0:
         raise ValueError("fps must be positive")
     frame_ms = max(1, round(1000.0 / opts.fps))
-    raw = list(decode_frames(clip, opts.fps, opts.max_width))
+    raw = list(decode_frames(clip, opts.fps, opts.max_width, opts.crop))
     if not raw:
         raise ValueError(f"no frames decoded from {clip}")
-    scale = (raw[0].size[0] / _probe_size(_ffmpeg(), clip)[0]) if opts.marker else 1.0
     frames, durations = merge_frames(raw, frame_ms, opts.tolerance, opts.min_fraction)
     if opts.marker:
+        # The marker is given in clip pixels; move it into the cropped, scaled output.
+        _, _, _, scale = _geometry(_probe_size(_ffmpeg(), clip), opts.crop, opts.max_width)
+        ox, oy = (opts.crop[0], opts.crop[1]) if opts.crop else (0, 0)
         x, y, w, h = opts.marker
-        scaled = (round(x * scale), round(y * scale), max(1, round(w * scale)), max(1, round(h * scale)))
+        scaled = (round((x - ox) * scale), round((y - oy) * scale), max(1, round(w * scale)), max(1, round(h * scale)))
         frames = [draw_marker(f, scaled, opts.marker_shape, opts.marker_color, opts.marker_width) for f in frames]
     durations[0] = max(durations[0], round(opts.lead_hold * 1000))
     durations[-1] = max(durations[-1], round(opts.end_hold * 1000))
@@ -154,6 +179,7 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
         "width": frames[0].size[0],
         "height": frames[0].size[1],
         "bytes": os.path.getsize(out),
+        "crop": list(opts.crop) if opts.crop else None,
         "marker": list(opts.marker) if opts.marker else None,
         "marker_shape": opts.marker_shape if opts.marker else None,
     }
