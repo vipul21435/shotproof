@@ -2,7 +2,7 @@
 
 Record a screen interaction on macOS, encode it to a GIF, and prove the GIF meets explicit limits.
 
-Three commands, one Python package, no service, no accounts:
+Four commands, one Python package, no service, no accounts:
 
 | command | does |
 |---|---|
@@ -102,11 +102,16 @@ $ shotproof encode take.mov take.gif --fps 8 --end-hold 1.5 --marker 640,420,180
   "duration_s": 5.5,
   "lead_hold_s": 1.0,
   "end_hold_s": 1.5,
-  ...
+  "width": 1200,
+  "height": 780,
+  "bytes": 412930,
+  "crop": null,
+  "marker": [640, 420, 180, 44],
+  "marker_shape": "rect"
 }
 ```
 
-The same report is written to `take.gif.json`. Flags:
+(An illustrative report; the demo's real one is in `docs/demo.gif.json`.) The same report is written to `take.gif.json`. Flags:
 
 | flag | default | |
 |---|---|---|
@@ -127,7 +132,7 @@ $ shotproof record take.mov --seconds 6 --move-to 700,440 --click --park 1300,60
 ```
 
 Sequence: the pointer is parked first (so the clip opens on a clean still), the display records for
-`--seconds`, after `--lead` seconds of stillness the pointer jumps directly to `--move-to` (one warp, no animated
+`--seconds` (a whole number, at least 1: `screencapture` counts whole seconds), after `--lead` seconds of stillness the pointer jumps directly to `--move-to` (one warp, no animated
 path), waits `--settle`, clicks if `--click`, types `--keys` if given, then jumps to `--park` and stays there.
 Nothing else moves, so `encode` can merge the tail into a hold.
 
@@ -156,7 +161,8 @@ take-001.png 125ms
 ...
 ```
 
-With an output directory it writes every frame as a PNG; with `--sheet sheet.png` it draws one contact sheet
+With no output directory it only lists the frames and their delays. With an output directory it writes every
+frame as a PNG; with `--sheet sheet.png` it draws one contact sheet
 of every frame with its duration, which is the fastest way to look at exactly what was captured before you
 share it. The demo's own sheet:
 

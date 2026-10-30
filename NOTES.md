@@ -10,7 +10,7 @@ State of the repository as of its first day.
 - `shotproof record`: CoreGraphics pointer warp, click and parking through `ctypes`, keystrokes through
   `osascript`, capture through `screencapture -V`. Argument checks are tested; the native path was run by hand
   to make `docs/demo.gif`, whose numbers are in the README.
-- GitHub Actions runs the test suite on Python 3.9 and 3.12 (ubuntu).
+- GitHub Actions runs the test suite on Python 3.9 and 3.12 on ubuntu and macOS, plus a `record --dry-run` on macOS.
 
 ## Not done
 
