@@ -96,10 +96,7 @@ def _applescript_string(text: str) -> str:
 
 def plan(opts: RecordOptions) -> List[str]:
     """The timed sequence ``record`` will perform, one line per step, with no side effects."""
-    if opts.seconds <= 0:
-        raise ValueError("seconds must be positive")
-    if opts.click and opts.move_to is None:
-        raise ValueError("--click needs --move-to")
+    _validate(opts)
     t = 0.0
     steps: List[str] = []
     if opts.park:
@@ -123,13 +120,17 @@ def plan(opts: RecordOptions) -> List[str]:
     return steps
 
 
+def _validate(opts: RecordOptions) -> None:
+    if opts.seconds < 1 or opts.seconds != int(opts.seconds):
+        raise ValueError("seconds must be a whole number of at least 1 (screencapture counts whole seconds)")
+    if opts.click and opts.move_to is None:
+        raise ValueError("--click needs --move-to")
+
+
 def record(opts: RecordOptions) -> str:
     if sys.platform != "darwin" or not shutil.which("screencapture"):
         raise RuntimeError("record needs macOS with screencapture")
-    if opts.seconds <= 0:
-        raise ValueError("seconds must be positive")
-    if opts.click and opts.move_to is None:
-        raise ValueError("--click needs --move-to")
+    _validate(opts)
     out = os.path.abspath(opts.out)
     if os.path.exists(out):
         os.remove(out)
@@ -137,7 +138,7 @@ def record(opts: RecordOptions) -> str:
     if opts.park:
         cg.move(opts.park)  # start where the clip will end, so the lead-in is already clean
     proc = subprocess.Popen(
-        ["screencapture", "-x", "-V", str(int(round(opts.seconds))), "-D", str(opts.display), out],
+        ["screencapture", "-x", "-V", str(int(opts.seconds)), "-D", str(opts.display), out],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
     )
     try:

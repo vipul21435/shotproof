@@ -30,10 +30,15 @@ def load_frames(path: str) -> List[Frame]:
                     rgb.load()
                 except Exception as exc:  # truncated or corrupt data
                     raise ValueError(f"frame {index} failed to decode: {exc}") from exc
-                frames.append(Frame(rgb, int(frame.info.get("duration", 0))))
+                frames.append(Frame(rgb, effective_delay(int(frame.info.get("duration", 0)))))
     except OSError as exc:
         raise ValueError(f"cannot read {path}: {exc}") from exc
     return frames
+
+
+def effective_delay(duration_ms: int) -> int:
+    """The delay a browser actually plays: a delay under 20 ms is shown for 100 ms, as browsers do."""
+    return 100 if duration_ms < 20 else duration_ms
 
 
 def diff_fraction(a: Image.Image, b: Image.Image, tolerance: int = 8) -> float:

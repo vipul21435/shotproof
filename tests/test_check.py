@@ -65,7 +65,7 @@ def test_cli_exit_codes(gif_factory, capsys):
     assert "FAIL" in capsys.readouterr().out
     assert main(["check", path, "--json", "--no-limit"]) == 0
     assert '"ok": true' in capsys.readouterr().out
-    assert main(["check", str(path) + ".missing"]) == 1  # decode failure is a failed check
+    assert main(["check", str(path) + ".missing"]) == 2  # a missing input is a usage error, not a failed check
 
 
 def test_cli_many_files_and_report(gif_factory, tmp_path, capsys):
@@ -80,3 +80,9 @@ def test_cli_many_files_and_report(gif_factory, tmp_path, capsys):
     data = json.loads(report.read_text())
     assert data[good]["ok"] is True and data[bad]["ok"] is False
     assert main(["check", good, bad, "--max-changes", "3"]) == 0
+
+
+def test_short_delays_play_as_100ms(gif_factory):
+    path = gif_factory([(RED, 0), (BLUE, 10), (RED, 20)])
+    m = measure(path)
+    assert m.duration_s == 0.22

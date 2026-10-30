@@ -39,7 +39,7 @@ Python 3.9 or newer.
 |---|---|
 | 0 | every check passed (or encode/record completed) |
 | 1 | a check failed, including a file that does not decode |
-| 2 | usage or input error (bad flag value, missing input, unsupported platform) |
+| 2 | usage or input error (bad flag value, missing input, unsupported platform, a failed system call) |
 
 ## `shotproof check`
 
@@ -210,7 +210,9 @@ frame holds for 3.0 s because the parked tail already lasted longer than `--end-
 - `encode` needs the `imageio-ffmpeg` extra; it bundles an ffmpeg binary, nothing is read from `PATH`.
 - Change detection is per pixel and global; it does not know about regions, so a clock in a status bar counts
   as a change every time it ticks. Crop or park such things out of frame, or raise `--min-fraction`.
-- GIF timing is in centiseconds; durations are rounded by the writer.
+- GIF timing is in centiseconds; `encode` rounds every delay to a whole centisecond before writing and reports
+  those rounded values, so the report matches the file. `check` measures a delay under 20 ms as 100 ms,
+  because that is how browsers play it.
 - The system's screen-recording indicator appears in the menu bar during the first second of a `record` take
   and counts as one or two changes. Use `--lead` so it has settled before the action, raise `--max-changes`
   by two, or `--crop` the menu bar out of the encode.

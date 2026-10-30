@@ -75,7 +75,7 @@ def test_zero_duration_frames(tmp_path):
     a, b = _base((10, 10, 10)), _base((240, 240, 240))
     path = _save(tmp_path / "zero.gif", [a, b], [0, 0])
     m = measure(path)
-    assert m.duration_s == 0
+    assert m.duration_s == 0.2  # a zero delay plays as 100 ms in browsers, and is measured that way
     assert m.frames == 2
     assert m.changed_frames == 1
     assert check(path, Limits()).measurements is not None

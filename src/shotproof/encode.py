@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Tuple
 
@@ -68,20 +69,23 @@ def _probe_size(ffmpeg: str, clip: str) -> Tuple[int, int]:
     return int(m.group(1)), int(m.group(2))
 
 
-def _geometry(size: Tuple[int, int], crop: Optional[Crop], max_width: Optional[int]) -> Tuple[Optional[Crop], int, int, float]:
-    """Resolve the crop against the clip size and the output size; returns (crop, out_w, out_h, scale)."""
+def _geometry(size: Tuple[int, int], crop: Optional[Crop], max_width: Optional[int]) -> Tuple[Optional[Crop], int, int, float, float]:
+    """Resolve the crop against the clip size and the output size; returns (crop, out_w, out_h, sx, sy).
+
+    ``sx``/``sy`` map cropped-clip pixels to output pixels; they differ slightly because the output height
+    is rounded to an even number for the encoder.
+    """
     w, h = size
     if crop:
         x, y, cw, ch = crop
         if x < 0 or y < 0 or x + cw > w or y + ch > h:
             raise ValueError(f"crop {crop} is outside the {w}x{h} clip")
         w, h = cw, ch
-    scale = 1.0
+    src_w, src_h = w, h
     if max_width and w > max_width:
-        scale = max_width / w
-        h = max(2, round(h * scale)) & ~1
+        h = max(2, round(h * max_width / w)) & ~1
         w = max_width
-    return crop, w, h, scale
+    return crop, w, h, w / src_w, h / src_h
 
 
 def decode_frames(clip: str, fps: float, max_width: Optional[int] = None, crop: Optional[Crop] = None) -> Iterator[Image.Image]:
@@ -89,7 +93,7 @@ def decode_frames(clip: str, fps: float, max_width: Optional[int] = None, crop: 
     if not os.path.exists(clip):
         raise FileNotFoundError(clip)
     ffmpeg = _ffmpeg()
-    crop, w, h, _ = _geometry(_probe_size(ffmpeg, clip), crop, max_width)
+    crop, w, h, _, _ = _geometry(_probe_size(ffmpeg, clip), crop, max_width)
     filters = [f"fps={fps}"]
     if crop:
         filters.append("crop={2}:{3}:{0}:{1}".format(*crop))
@@ -99,19 +103,23 @@ def decode_frames(clip: str, fps: float, max_width: Optional[int] = None, crop: 
         "-vf", ",".join(filters),
         "-f", "rawvideo", "-pix_fmt", "rgb24", "-",
     ]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    assert proc.stdout is not None
-    nbytes = w * h * 3
-    try:
-        while True:
-            buf = proc.stdout.read(nbytes)
-            if len(buf) < nbytes:
-                break
-            yield Image.frombytes("RGB", (w, h), buf)
-    finally:
-        proc.stdout.close()
-        err = proc.stderr.read().decode(errors="replace") if proc.stderr else ""
-        if proc.wait() != 0:
+    # stderr goes to a temporary file, not a pipe: a chatty failure must not block ffmpeg while we read stdout.
+    with tempfile.TemporaryFile() as errf:
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf)
+        assert proc.stdout is not None
+        nbytes = w * h * 3
+        try:
+            while True:
+                buf = proc.stdout.read(nbytes)
+                if len(buf) < nbytes:
+                    break
+                yield Image.frombytes("RGB", (w, h), buf)
+        finally:
+            proc.stdout.close()
+            code = proc.wait()
+            errf.seek(0)
+            err = errf.read().decode(errors="replace")
+        if code != 0:
             raise RuntimeError(f"ffmpeg failed: {err.strip()}")
 
 
@@ -142,6 +150,11 @@ def draw_marker(im: Image.Image, marker: Marker, shape: str, color: Tuple[int, i
     return out
 
 
+def gif_delays(durations: List[int]) -> List[int]:
+    """What the GIF will actually carry: whole centiseconds, and never below the 20 ms browsers honour."""
+    return [max(20, round(d / 10) * 10) for d in durations]
+
+
 def write_gif(path: str, frames: List[Image.Image], durations: List[int], colors: int) -> None:
     pal = [f.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE) for f in frames]
     pal[0].save(path, save_all=True, append_images=pal[1:], duration=durations, loop=0, disposal=1, optimize=False)
@@ -158,13 +171,14 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
     frames, durations = merge_frames(raw, frame_ms, opts.tolerance, opts.min_fraction)
     if opts.marker:
         # The marker is given in clip pixels; move it into the cropped, scaled output.
-        _, _, _, scale = _geometry(_probe_size(_ffmpeg(), clip), opts.crop, opts.max_width)
+        _, _, _, sx, sy = _geometry(_probe_size(_ffmpeg(), clip), opts.crop, opts.max_width)
         ox, oy = (opts.crop[0], opts.crop[1]) if opts.crop else (0, 0)
         x, y, w, h = opts.marker
-        scaled = (round((x - ox) * scale), round((y - oy) * scale), max(1, round(w * scale)), max(1, round(h * scale)))
+        scaled = (round((x - ox) * sx), round((y - oy) * sy), max(1, round(w * sx)), max(1, round(h * sy)))
         frames = [draw_marker(f, scaled, opts.marker_shape, opts.marker_color, opts.marker_width) for f in frames]
     durations[0] = max(durations[0], round(opts.lead_hold * 1000))
     durations[-1] = max(durations[-1], round(opts.end_hold * 1000))
+    durations = gif_delays(durations)  # report what the file carries, not what was asked for
     write_gif(out, frames, durations, opts.colors)
     report = {
         "input": os.path.basename(clip),

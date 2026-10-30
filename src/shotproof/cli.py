@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from typing import List, Optional
 
@@ -43,6 +44,9 @@ def _limits_from(ns: argparse.Namespace) -> Limits:
 
 def cmd_check(ns: argparse.Namespace) -> int:
     limits = _limits_from(ns)
+    missing = [g for g in ns.gifs if not os.path.exists(g)]
+    if missing:
+        raise FileNotFoundError(", ".join(missing))
     results = {gif: check(gif, limits, ns.tolerance, ns.min_fraction) for gif in ns.gifs}
     all_ok = all(r.ok for r in results.values())
     if ns.json:
@@ -158,7 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     r = sub.add_parser("record", help="(macOS) drive one scripted interaction and capture the display to a .mov")
     r.add_argument("out", help="output .mov")
-    r.add_argument("--seconds", type=float, default=6.0, help="recording length (default 6)")
+    r.add_argument("--seconds", type=float, default=6.0, help="recording length in whole seconds, at least 1 (default 6)")
     r.add_argument("--move-to", metavar="X,Y", help="move the pointer here before acting")
     r.add_argument("--click", action="store_true", help="click at the pointer")
     r.add_argument("--keys", metavar="TEXT", help="type this text after the click")
@@ -183,7 +187,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     ns = build_parser().parse_args(argv)
     try:
         return ns.func(ns)
-    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+    except (ValueError, OSError, RuntimeError, subprocess.CalledProcessError) as exc:
         print(f"shotproof: {exc}", file=sys.stderr)
         return 2
 
