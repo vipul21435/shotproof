@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "shotproof"
+version = "0.1.0"
+description = "Record a screen interaction on macOS, encode it to a GIF, and check the GIF against explicit limits."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["Pillow>=10.0"]
+
+[project.optional-dependencies]
+encode = ["imageio-ffmpeg>=0.4.9"]
+dev = ["pytest>=7", "imageio-ffmpeg>=0.4.9"]
+
+[project.scripts]
+shotproof = "shotproof.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

@@ -1,0 +1,145 @@
+"""Command-line entry point. Exit codes: 0 pass, 1 a check failed, 2 usage or input error."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from typing import List, Optional
+
+from . import __version__
+from .check import Limits, check
+
+
+def _add_check_limits(p: argparse.ArgumentParser) -> None:
+    g = p.add_argument_group("limits (defaults suit a strict reviewer; change them with flags)")
+    g.add_argument("--max-duration", type=float, default=10.0, metavar="S", help="total play time in seconds (default 10)")
+    g.add_argument("--max-changes", type=int, default=32, metavar="N", help="visually changed frames allowed (default 32)")
+    g.add_argument("--min-end-hold", type=float, default=None, metavar="S", help="the file must end on a still at least S seconds long")
+    g.add_argument("--max-hold", type=float, default=None, metavar="S", help="no still run may exceed S seconds")
+    g.add_argument("--max-bytes", type=int, default=3_500_000, metavar="B", help="file size (default 3500000)")
+    g.add_argument("--max-width", type=int, default=None, metavar="PX")
+    g.add_argument("--max-height", type=int, default=None, metavar="PX")
+    g.add_argument("--no-limit", action="store_true", help="measure only; disable every default limit")
+    s = p.add_argument_group("change detection")
+    s.add_argument("--tolerance", type=int, default=8, metavar="LEVELS", help="per-channel difference treated as noise (default 8)")
+    s.add_argument("--min-fraction", type=float, default=0.0005, metavar="F", help="fraction of pixels that must differ to count as a change (default 0.0005)")
+
+
+def _limits_from(ns: argparse.Namespace) -> Limits:
+    if ns.no_limit:
+        return Limits(None, None, None, None, None, None, None)
+    return Limits(
+        max_duration=ns.max_duration,
+        max_changes=ns.max_changes,
+        min_end_hold=ns.min_end_hold,
+        max_hold=ns.max_hold,
+        max_bytes=ns.max_bytes,
+        max_width=ns.max_width,
+        max_height=ns.max_height,
+    )
+
+
+def cmd_check(ns: argparse.Namespace) -> int:
+    result = check(ns.gif, _limits_from(ns), ns.tolerance, ns.min_fraction)
+    if ns.json:
+        print(json.dumps(result.to_dict(), indent=2))
+    else:
+        m = result.measurements
+        if m:
+            print(f"{ns.gif}: {m.frames} frames, {m.duration_s}s, {m.changed_frames} changes, "
+                  f"longest still {m.longest_hold_s}s, final still {m.end_hold_s}s, "
+                  f"{m.width}x{m.height}, {m.bytes} bytes")
+        for f in result.failures:
+            print(f"FAIL: {f}")
+        print("PASS" if result.ok else "FAIL")
+    return 0 if result.ok else 1
+
+
+def cmd_encode(ns: argparse.Namespace) -> int:
+    from .encode import encode, EncodeOptions, parse_marker
+
+    marker = parse_marker(ns.marker) if ns.marker else None
+    opts = EncodeOptions(
+        fps=ns.fps,
+        lead_hold=ns.lead_hold,
+        end_hold=ns.end_hold,
+        tolerance=ns.tolerance,
+        min_fraction=ns.min_fraction,
+        max_width=ns.max_width,
+        marker=marker,
+        marker_shape=ns.marker_shape,
+        colors=ns.colors,
+    )
+    report = encode(ns.clip, ns.out, opts)
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def cmd_record(ns: argparse.Namespace) -> int:
+    from .record import record, RecordOptions, parse_point
+
+    opts = RecordOptions(
+        out=ns.out,
+        seconds=ns.seconds,
+        move_to=parse_point(ns.move_to) if ns.move_to else None,
+        click=ns.click,
+        keys=ns.keys,
+        park=parse_point(ns.park) if ns.park else None,
+        lead=ns.lead,
+        settle=ns.settle,
+    )
+    path = record(opts)
+    print(path)
+    return 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="shotproof", description="Record a screen interaction, encode it to a GIF, and prove the GIF meets explicit limits.")
+    p.add_argument("--version", action="version", version=f"shotproof {__version__}")
+    sub = p.add_subparsers(dest="command", required=True)
+
+    c = sub.add_parser("check", help="verify a GIF against limits; exit 1 if any fails")
+    c.add_argument("gif")
+    c.add_argument("--json", action="store_true", help="print the measurements and failures as JSON")
+    _add_check_limits(c)
+    c.set_defaults(func=cmd_check)
+
+    e = sub.add_parser("encode", help="turn a screen recording into a GIF and write a JSON report beside it")
+    e.add_argument("clip", help="input video (.mov/.mp4); needs imageio-ffmpeg")
+    e.add_argument("out", help="output .gif")
+    e.add_argument("--fps", type=float, default=8.0, help="decode rate (default 8)")
+    e.add_argument("--lead-hold", type=float, default=0.5, metavar="S", help="hold the first frame for S seconds (default 0.5)")
+    e.add_argument("--end-hold", type=float, default=1.5, metavar="S", help="hold the last frame for S seconds (default 1.5)")
+    e.add_argument("--max-width", type=int, default=None, metavar="PX", help="scale down so width is at most PX")
+    e.add_argument("--marker", default=None, metavar="X,Y,W,H", help="draw one stationary marker over this region")
+    e.add_argument("--marker-shape", choices=["rect", "ellipse"], default="rect")
+    e.add_argument("--colors", type=int, default=128, help="palette size (default 128)")
+    e.add_argument("--tolerance", type=int, default=8, metavar="LEVELS")
+    e.add_argument("--min-fraction", type=float, default=0.0005, metavar="F")
+    e.set_defaults(func=cmd_encode)
+
+    r = sub.add_parser("record", help="(macOS) drive one scripted interaction and capture the display to a .mov")
+    r.add_argument("out", help="output .mov")
+    r.add_argument("--seconds", type=float, default=6.0, help="recording length (default 6)")
+    r.add_argument("--move-to", metavar="X,Y", help="move the pointer here before acting")
+    r.add_argument("--click", action="store_true", help="click at the pointer")
+    r.add_argument("--keys", metavar="TEXT", help="type this text after the click")
+    r.add_argument("--park", metavar="X,Y", help="move the pointer here afterwards, outside the changing region")
+    r.add_argument("--lead", type=float, default=1.0, metavar="S", help="seconds of stillness before the action (default 1)")
+    r.add_argument("--settle", type=float, default=0.3, metavar="S", help="seconds between the move and the click (default 0.3)")
+    r.set_defaults(func=cmd_record)
+    return p
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    ns = build_parser().parse_args(argv)
+    try:
+        return ns.func(ns)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        print(f"shotproof: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())
