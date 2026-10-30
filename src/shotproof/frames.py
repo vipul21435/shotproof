@@ -59,10 +59,12 @@ def diff_fraction(a: Image.Image, b: Image.Image, tolerance: int = 8, ignore: Op
     if ignore:
         from PIL import ImageDraw
 
-        draw = ImageDraw.Draw(mask)
+        keep = Image.new("L", a.size, 255)  # 255 where pixels are compared
+        draw = ImageDraw.Draw(keep)
         for x, y, w, h in ignore:
             draw.rectangle((x, y, x + w - 1, y + h - 1), fill=0)
-            total -= max(0, min(x + w, a.size[0]) - max(x, 0)) * max(0, min(y + h, a.size[1]) - max(y, 0))
+        mask = ImageChops.multiply(mask, keep)
+        total = keep.histogram()[255]  # counted from the drawing, so overlaps and off-canvas parts are exact
     changed = mask.histogram()[255]
     return changed / total if total > 0 else 0.0
 

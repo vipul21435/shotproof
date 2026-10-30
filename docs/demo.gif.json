@@ -10,8 +10,9 @@
   "end_hold_s": 3.0,
   "width": 1200,
   "height": 780,
-  "bytes": 456161,
+  "bytes": 384775,
   "crop": null,
+  "ignore": [],
   "marker": [
     2690,
     1000,

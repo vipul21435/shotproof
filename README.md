@@ -181,7 +181,10 @@ it.
 
 **Merging (`encode`).** Frames are sampled at `--fps`. A frame that is not a change against the last kept
 frame is dropped and its time is added to that frame's duration. So a six-second clip with one click
-typically becomes three or four frames: the opening still, the hover state, the result, and the hold.
+typically becomes three or four frames: the opening still, the hover state, the result, and the hold. The
+kept frames are then quantised with one palette shared by the whole file, so two frames that matched in RGB
+match pixel for pixel in the GIF and a hold reads back as a hold. (With a palette per frame, as most GIF
+writers do by default, every still would differ by a few levels across the whole canvas.)
 
 **Hold measurement (`check`).** Walking the frames, every run of non-changes is summed in seconds, including
 the frame that starts the run. `longest_hold_s` is the biggest run anywhere; `end_hold_s` is the run that
@@ -202,14 +205,16 @@ Made on a laptop display with the three commands as published, nothing edited af
 $ shotproof record demo.mov --seconds 6 --lead 1.5 --move-to 420,572 --click --park 1380,560 --settle 0.4
 $ shotproof encode demo.mov demo.gif --fps 8 --max-width 1200 --end-hold 1.5 --marker 2690,1000,160,70
 $ shotproof check demo.gif --min-end-hold 1.5 --max-changes 8
-demo.gif: 6 frames, 6.13s, 5 changes, longest still 3.0s, final still 3.0s, 1200x780, 456161 bytes
+demo.gif: 6 frames, 6.13s, 4 changes, longest still 3.0s, final still 3.0s, 1200x780, 384775 bytes
 PASS
 ```
 
 The encode report is [docs/demo.gif.json](docs/demo.gif.json): 48 frames decoded at 8 fps, 42 merged as noise,
-6 kept. Of the 5 changes, 2 are the system's own screen-recording indicator settling in the menu bar during the
-first second, then the pointer arriving on the button, the click's result, and the pointer parking. The last
-frame holds for 3.0 s because the parked tail already lasted longer than `--end-hold`.
+6 kept. `check` counts 4 changes rather than 5 because the second kept frame (the system's recording indicator
+finishing its fade-in, 120 ms after the first) lands just under the change threshold once the GIF palette has
+flattened it; the count is the same at `--tolerance 8`, `16` and `32`. The four are the indicator appearing,
+the pointer arriving on the button, the click's result, and the pointer parking. The last frame holds for
+3.0 s because the parked tail already lasted longer than `--end-hold`.
 
 ## Limitations
 

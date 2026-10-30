@@ -49,7 +49,7 @@ def test_encode_merges_still_runs(clip, tmp_path):
         assert json.load(fh) == report
     r = check(out, Limits(max_duration=4, max_changes=2, min_end_hold=1.5))
     assert r.ok, r.failures
-    assert r.measurements.changed_frames == 2
+    assert r.measurements.changed_frames == 2  # exactly kept_frames - 1: the shared palette adds no noise
     assert r.measurements.hold_at_end
 
 
@@ -99,3 +99,24 @@ def test_encode_ignore_region(clip, tmp_path):
     # ignore regions are mapped through crop and scale like the marker
     report = encode(clip, out, EncodeOptions(fps=10, max_width=80, crop=(0, 30, 160, 60), ignore=((0, 35, 160, 40),)))
     assert report["kept_frames"] == 1
+
+
+def test_shared_palette_keeps_stills_identical(tmp_path):
+    """Two RGB-identical frames must come out of the GIF pixel-identical, whatever the palette size."""
+    from shotproof.encode import write_gif
+    from shotproof.frames import diff_fraction, load_frames
+
+    base = Image.new("RGB", (120, 80))
+    px = base.load()
+    for y in range(80):
+        for x in range(120):
+            px[x, y] = (x * 2, y * 3, (x + y) % 256)  # a gradient that a small palette must approximate
+    other = base.copy()
+    ImageDraw.Draw(other).rectangle((10, 10, 40, 40), fill=(255, 0, 0))
+    out = str(tmp_path / "pal.gif")
+    write_gif(out, [base, base.copy(), other, base.copy()], [100, 100, 100, 100], colors=32)
+    frames = load_frames(out)
+    # the writer folds the two identical opening frames into one, so three frames come back
+    assert [f.duration_ms for f in frames] == [200, 100, 100]
+    assert diff_fraction(frames[0].image, frames[2].image, tolerance=0) == 0.0
+    assert diff_fraction(frames[0].image, frames[1].image) > 0.05

@@ -52,3 +52,11 @@ def test_parse_rect_errors():
 
 def test_encode_options_carry_ignore():
     assert EncodeOptions(ignore=((1, 2, 3, 4),)).ignore == ((1, 2, 3, 4),)
+
+
+def test_overlapping_ignore_rects_counted_once():
+    a, b = frame((200, 200, 200)), frame((90, 90, 90))
+    whole = [(0, 0, 200, 100), (0, 0, 200, 100), (50, 50, 400, 400)]
+    assert diff_fraction(a, b, ignore=whole) == 0.0
+    # half the canvas ignored twice over: the clock is still outside it, so the fraction doubles exactly
+    assert diff_fraction(a, b, ignore=[(0, 50, 200, 50), (0, 50, 200, 50)]) == pytest.approx(2 * diff_fraction(a, b))

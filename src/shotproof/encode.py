@@ -144,8 +144,20 @@ def gif_delays(durations: List[int]) -> List[int]:
     return [max(20, round(d / 10) * 10) for d in durations]
 
 
+def shared_palette(frames: List[Image.Image], colors: int) -> Image.Image:
+    """One palette built from every kept frame, so frames that match in RGB match pixel for pixel in the GIF."""
+    w, h = frames[0].size
+    tw = max(1, min(w, 256))
+    th = max(1, round(h * tw / w))
+    strip = Image.new("RGB", (tw, th * len(frames)))
+    for i, f in enumerate(frames):
+        strip.paste(f.resize((tw, th)), (0, i * th))
+    return strip.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE)
+
+
 def write_gif(path: str, frames: List[Image.Image], durations: List[int], colors: int) -> None:
-    pal = [f.quantize(colors=colors, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE) for f in frames]
+    palette = shared_palette(frames, colors)
+    pal = [f.quantize(palette=palette, dither=Image.Dither.NONE) for f in frames]
     pal[0].save(path, save_all=True, append_images=pal[1:], duration=durations, loop=0, disposal=1, optimize=False)
 
 
@@ -165,7 +177,9 @@ def encode(clip: str, out: str, opts: EncodeOptions) -> dict:
 
         def to_output(rect: Rect) -> Rect:
             x, y, w, h = rect
-            return round((x - ox) * sx), round((y - oy) * sy), max(1, round(w * sx)), max(1, round(h * sy))
+            x0, y0 = round((x - ox) * sx), round((y - oy) * sy)
+            x1, y1 = round((x + w - ox) * sx), round((y + h - oy) * sy)  # edges mapped separately, so none is lost
+            return x0, y0, max(1, x1 - x0), max(1, y1 - y0)
 
     ignore = [to_output(r) for r in opts.ignore] if opts.ignore else None
     frames, durations = merge_frames(raw, frame_ms, opts.tolerance, opts.min_fraction, ignore)
