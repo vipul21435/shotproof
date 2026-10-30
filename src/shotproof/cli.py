@@ -88,6 +88,7 @@ def cmd_record(ns: argparse.Namespace) -> int:
         park=parse_point(ns.park) if ns.park else None,
         lead=ns.lead,
         settle=ns.settle,
+        display=ns.display,
     )
     path = record(opts)
     print(path)
@@ -128,6 +129,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("--park", metavar="X,Y", help="move the pointer here afterwards, outside the changing region")
     r.add_argument("--lead", type=float, default=1.0, metavar="S", help="seconds of stillness before the action (default 1)")
     r.add_argument("--settle", type=float, default=0.3, metavar="S", help="seconds between the move and the click (default 0.3)")
+    r.add_argument("--display", type=int, default=1, help="display number as screencapture counts them (default 1, the main display)")
     r.set_defaults(func=cmd_record)
     return p
 
