@@ -1,5 +1,7 @@
 # shotproof
 
+[![tests](https://github.com/vipul21435/shotproof/actions/workflows/tests.yml/badge.svg)](https://github.com/vipul21435/shotproof/actions/workflows/tests.yml)
+
 Record a screen interaction on macOS, encode it to a GIF, and prove the GIF meets explicit limits.
 
 Four commands, one Python package, no service, no accounts:
@@ -252,6 +254,15 @@ than being skipped.
 - The system's screen-recording indicator appears in the menu bar during the first second of a `record` take
   and counts as one or two changes. Use `--lead` so it has settled before the action, raise `--max-changes`
   by two, or `--crop` the menu bar out of the encode.
+
+## Related tools
+
+- [testlogs](https://github.com/vipul21435/testlogs): parse pytest, JUnit XML and TAP output into per-test results, and diff two runs.
+- [taskgate](https://github.com/vipul21435/taskgate): review gates for pull requests that add or change benchmark tasks for AI coding agents.
+- [evalstats](https://github.com/vipul21435/evalstats): error bars, paired comparisons and sample-size planning for model evaluations scored per item.
+- [trajlens](https://github.com/vipul21435/trajlens): read coding-agent trajectories, measure behaviour, classify failures.
+
+The full list is on the author's profile: https://github.com/vipul21435
 
 ## Licence
 
